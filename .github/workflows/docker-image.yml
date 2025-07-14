@@ -28,7 +28,7 @@ jobs:
     - name: Build and push Docker image
       run: |
         PLATFORMS=linux/arm64,linux/amd64
-        DOCKER_IMAGE=ghcr.io/${{ github.repository }}
+        DOCKER_IMAGE=ghcr.io/herbertgao/sgcc_electricity_new
         ARCH_TAGS="arm64 amd64"        
         VERSION=${{ inputs.version || github.sha }}
         docker buildx build --build-arg VERSION=${VERSION} --platform $PLATFORMS -t $DOCKER_IMAGE:latest -t $DOCKER_IMAGE:${VERSION} --file Dockerfile-for-github-action --push .
