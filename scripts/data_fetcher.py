@@ -205,78 +205,97 @@ class DataFetcher:
             driver.implicitly_wait(self.DRIVER_IMPLICITY_WAIT_TIME)
         return driver
 
-    def _login(self, driver, phone_code = False):
-
-        driver.get(LOGIN_URL)
-        logging.info(f"Open LOGIN_URL:{LOGIN_URL}.\r")
-        time.sleep(self.RETRY_WAIT_TIME_OFFSET_UNIT*2)
-        # swtich to username-password login page
-        driver.find_element(By.CLASS_NAME, "user").click()
-        logging.info("find_element 'user'.\r")
-        self._click_button(driver, By.XPATH, '//*[@id="login_box"]/div[1]/div[1]/div[2]/span')
-        time.sleep(self.RETRY_WAIT_TIME_OFFSET_UNIT)
-        # click agree button
-        self._click_button(driver, By.XPATH, '//*[@id="login_box"]/div[2]/div[1]/form/div[1]/div[3]/div/span[2]')
-        logging.info("Click the Agree option.\r")
-        time.sleep(self.RETRY_WAIT_TIME_OFFSET_UNIT)
-        if phone_code:
-            self._click_button(driver, By.XPATH, '//*[@id="login_box"]/div[1]/div[1]/div[3]/span')
-            input_elements = driver.find_elements(By.CLASS_NAME, "el-input__inner")
-            input_elements[2].send_keys(self._username)
-            logging.info(f"input_elements username : {self._username}\r")
-            self._click_button(driver, By.XPATH, '//*[@id="login_box"]/div[2]/div[2]/form/div[1]/div[2]/div[2]/div/a')
-            code = input("Input your phone verification code: ")
-            input_elements[3].send_keys(code)
-            logging.info(f"input_elements verification code: {code}.\r")
-            # click login button
-            self._click_button(driver, By.XPATH, '//*[@id="login_box"]/div[2]/div[2]/form/div[2]/div/button/span')
+    def _try_login_with_url(self, driver, login_url, phone_code=False):
+        """Try to login with specified URL"""
+        try:
+            driver.get(login_url)
+            logging.info(f"Open LOGIN_URL:{login_url}.\r")
             time.sleep(self.RETRY_WAIT_TIME_OFFSET_UNIT*2)
-            logging.info("Click login button.\r")
+            # swtich to username-password login page
+            driver.find_element(By.CLASS_NAME, "user").click()
+            logging.info("find_element 'user'.\r")
+            self._click_button(driver, By.XPATH, '//*[@id="login_box"]/div[1]/div[1]/div[2]/span')
+            time.sleep(self.RETRY_WAIT_TIME_OFFSET_UNIT)
+            # click agree button
+            self._click_button(driver, By.XPATH, '//*[@id="login_box"]/div[2]/div[1]/form/div[1]/div[3]/div/span[2]')
+            logging.info("Click the Agree option.\r")
+            time.sleep(self.RETRY_WAIT_TIME_OFFSET_UNIT)
+            if phone_code:
+                self._click_button(driver, By.XPATH, '//*[@id="login_box"]/div[1]/div[1]/div[3]/span')
+                input_elements = driver.find_elements(By.CLASS_NAME, "el-input__inner")
+                input_elements[2].send_keys(self._username)
+                logging.info(f"input_elements username : {self._username}\r")
+                self._click_button(driver, By.XPATH, '//*[@id="login_box"]/div[2]/div[2]/form/div[1]/div[2]/div[2]/div/a')
+                code = input("Input your phone verification code: ")
+                input_elements[3].send_keys(code)
+                logging.info(f"input_elements verification code: {code}.\r")
+                # click login button
+                self._click_button(driver, By.XPATH, '//*[@id="login_box"]/div[2]/div[2]/form/div[2]/div/button/span')
+                time.sleep(self.RETRY_WAIT_TIME_OFFSET_UNIT*2)
+                logging.info("Click login button.\r")
+                return True
+            else:
+                # input username and password
+                input_elements = driver.find_elements(By.CLASS_NAME, "el-input__inner")
+                input_elements[0].send_keys(self._username)
+                logging.info(f"input_elements username : {self._username}\r")
+                input_elements[1].send_keys(self._password)
+                logging.info(f"input_elements password : {self._password}\r")
 
+                # click login button
+                self._click_button(driver, By.CLASS_NAME, "el-button.el-button--primary")
+                time.sleep(self.RETRY_WAIT_TIME_OFFSET_UNIT*2)
+                logging.info("Click login button.\r")
+                # sometimes ddddOCR may fail, so add retry logic)
+                for retry_times in range(1, self.RETRY_TIMES_LIMIT + 1):
+                    
+                    self._click_button(driver, By.XPATH, '//*[@id="login_box"]/div[1]/div[1]/div[2]/span')
+                    #get canvas image
+                    background_JS = 'return document.getElementById("slideVerify").childNodes[0].toDataURL("image/png");'
+                    # targe_JS = 'return document.getElementsByClassName("slide-verify-block")[0].toDataURL("image/png");'
+                    # get base64 image data
+                    im_info = driver.execute_script(background_JS) 
+                    background = im_info.split(',')[1]  
+                    background_image = base64_to_PLI(background)
+                    logging.info(f"Get electricity canvas image successfully.\r")
+                    distance = self.onnx.get_distance(background_image)
+                    logging.info(f"Image CaptCHA distance is {distance}.\r")
+
+                    self._sliding_track(driver, round(distance*1.06)) #1.06是补偿
+                    time.sleep(self.RETRY_WAIT_TIME_OFFSET_UNIT)
+                    if (driver.current_url == login_url): # if login not success
+                        try:
+                            logging.info(f"Sliding CAPTCHA recognition failed and reloaded.\r")
+                            self._click_button(driver, By.CLASS_NAME, "el-button.el-button--primary")
+                            time.sleep(self.RETRY_WAIT_TIME_OFFSET_UNIT*2)
+                            continue
+                        except:
+                            logging.debug(
+                                f"Login failed, maybe caused by invalid captcha, {self.RETRY_TIMES_LIMIT - retry_times} retry times left.")
+                    else:
+                        return True
+                logging.error(f"Login failed, maybe caused by Sliding CAPTCHA recognition failed")
+                return False
+        except Exception as e:
+            logging.error(f"Login failed with URL {login_url}: {e}")
+            return False
+
+    def _login(self, driver, phone_code=False):
+        """Login method with automatic fallback to backup URL"""
+        # First try main URL
+        logging.info("Trying to login with main URL...")
+        if self._try_login_with_url(driver, LOGIN_URL, phone_code):
+            logging.info(f"Login successful with main URL: {LOGIN_URL}")
             return True
-        else :
-            # input username and password
-            input_elements = driver.find_elements(By.CLASS_NAME, "el-input__inner")
-            input_elements[0].send_keys(self._username)
-            logging.info(f"input_elements username : {self._username}\r")
-            input_elements[1].send_keys(self._password)
-            logging.info(f"input_elements password : {self._password}\r")
-
-            # click login button
-            self._click_button(driver, By.CLASS_NAME, "el-button.el-button--primary")
-            time.sleep(self.RETRY_WAIT_TIME_OFFSET_UNIT*2)
-            logging.info("Click login button.\r")
-            # sometimes ddddOCR may fail, so add retry logic)
-            for retry_times in range(1, self.RETRY_TIMES_LIMIT + 1):
-                
-                self._click_button(driver, By.XPATH, '//*[@id="login_box"]/div[1]/div[1]/div[2]/span')
-                #get canvas image
-                background_JS = 'return document.getElementById("slideVerify").childNodes[0].toDataURL("image/png");'
-                # targe_JS = 'return document.getElementsByClassName("slide-verify-block")[0].toDataURL("image/png");'
-                # get base64 image data
-                im_info = driver.execute_script(background_JS) 
-                background = im_info.split(',')[1]  
-                background_image = base64_to_PLI(background)
-                logging.info(f"Get electricity canvas image successfully.\r")
-                distance = self.onnx.get_distance(background_image)
-                logging.info(f"Image CaptCHA distance is {distance}.\r")
-
-                self._sliding_track(driver, round(distance*1.06)) #1.06是补偿
-                time.sleep(self.RETRY_WAIT_TIME_OFFSET_UNIT)
-                if (driver.current_url == LOGIN_URL): # if login not success
-                    try:
-                        logging.info(f"Sliding CAPTCHA recognition failed and reloaded.\r")
-                        self._click_button(driver, By.CLASS_NAME, "el-button.el-button--primary")
-                        time.sleep(self.RETRY_WAIT_TIME_OFFSET_UNIT*2)
-                        continue
-                    except:
-                        logging.debug(
-                            f"Login failed, maybe caused by invalid captcha, {self.RETRY_TIMES_LIMIT - retry_times} retry times left.")
-                else:
-                    return True
-            logging.error(f"Login failed, maybe caused by Sliding CAPTCHA recognition failed")
-        return False
-
+        
+        # Main URL failed, try backup URL
+        logging.info("Main URL login failed, trying backup URL...")
+        if self._try_login_with_url(driver, LOGIN_URL_BACKUP, phone_code):
+            logging.info(f"Login successful with backup URL: {LOGIN_URL_BACKUP}")
+            return True
+        
+        # Both URLs failed
+        logging.error("Both main URL and backup URL login failed")
         raise Exception(
             "Login failed, maybe caused by 1.incorrect phone_number and password, please double check. or 2. network, please mnodify LOGIN_EXPECTED_TIME in .env and run docker compose up --build.")
         
@@ -310,7 +329,7 @@ class DataFetcher:
             driver.quit()
             return
 
-        logging.info(f"Login successfully on {LOGIN_URL}")
+        logging.info(f"Login successfully")
         time.sleep(self.RETRY_WAIT_TIME_OFFSET_UNIT)
         logging.info(f"Try to get the userid list")
         user_id_list = self._get_user_ids(driver)

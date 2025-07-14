@@ -21,8 +21,8 @@
 # ⚡️国家电网电力获取
 
 [![Docker Image CI](https://github.com/ARC-MX/sgcc_electricity_new/actions/workflows/docker-image.yml/badge.svg)](https://github.com/ARC-MX/sgcc_electricity_new/actions/workflows/docker-image.yml)
-[![Image Size](https://img.shields.io/docker/image-size/arcw/sgcc_electricity)](https://hub.docker.com/r/arcw/sgcc_electricity)
-[![Docker Pull](https://img.shields.io/docker/pulls/arcw/sgcc_electricity?color=%2348BB78&logo=docker&label=pulls)](https://hub.docker.com/r/arcw/sgcc_electricity)
+[![Image Size](https://img.shields.io/docker/image-size/ghcr.io/herbertgao/sgcc_electricity_new)](https://github.com/herbertgao/sgcc_electricity_new/packages)
+[![Docker Pull](https://img.shields.io/docker/pulls/ghcr.io/herbertgao/sgcc_electricity_new?color=%2348BB78&logo=docker&label=pulls)](https://github.com/herbertgao/sgcc_electricity_new/packages)
 
 <p align="center">
 <img src="assets/image-20230730135540291.png" alt="mini-graph-card" width="400">
@@ -148,8 +148,7 @@ PUSHPLUS_TOKEN=xxxxxxx,xxxxxxx,xxxxxxx
 
 4. 运行
 
-  我已经优化了镜像环境，将镜像的地址配置为阿里云，如果要使用docker hub的源可以将docker-compose.yml中
-  image: registry.cn-hangzhou.aliyuncs.com/arcw/sgcc_electricity:latest 改为 arcw/sgcc_electricity:latest
+  image: ghcr.io/herbertgao/sgcc_electricity_new:latest
 
 ```bash
 运行获取传感器名称
@@ -191,8 +190,8 @@ docker-compose logs sgcc_electricity_app
 
 **sensor.electricity_charge_balance_xxxx 为余额传感器**
 
-5. 配置configuration.yaml文件, 将下面中的_xxxx 替换为自己log中的_xxxx后缀。
-6. 由于是API方式传递传感器数据，所以要想重启ha实体ID可用，必须配置如下
+1. 配置configuration.yaml文件, 将下面中的_xxxx 替换为自己log中的_xxxx后缀。
+2. 由于是API方式传递传感器数据，所以要想重启ha实体ID可用，必须配置如下
 
 ```yaml
 template:
